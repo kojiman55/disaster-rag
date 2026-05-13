@@ -4,54 +4,15 @@ import { HazardData, HazardRisk, RiskLevel, Shelter } from "./shared/types";
 
 const REINFOLIB_BASE = "https://www.reinfolib.mlit.go.jp/ex-api/external";
 
-// 不動産情報ライブラリ API IDs
 const HAZARD_APIS = {
-  flood:      "XKT026",  // 洪水浸水想定区域（想定最大規模）
-  stormSurge: "XKT027",  // 高潮浸水想定区域
-  tsunami:    "XKT028",  // 津波浸水想定
-  landslide:  "XKT029",  // 土砂災害警戒区域
+  flood:      "XKT026",
+  stormSurge: "XKT027",
+  tsunami:    "XKT028",
+  landslide:  "XKT029",
 } as const;
-
-// Osaka municipality codes (27xxx)
-const OSAKA_MUNICIPALITIES: Record<string, string> = {
-  "大阪市":     "27100",
-  "堺市":       "27140",
-  "岸和田市":   "27202",
-  "豊中市":     "27203",
-  "池田市":     "27204",
-  "吹田市":     "27205",
-  "泉大津市":   "27206",
-  "高槻市":     "27207",
-  "貝塚市":     "27208",
-  "守口市":     "27209",
-  "枚方市":     "27210",
-  "茨木市":     "27211",
-  "八尾市":     "27212",
-  "泉佐野市":   "27213",
-  "富田林市":   "27214",
-  "寝屋川市":   "27215",
-  "河内長野市": "27216",
-  "松原市":     "27217",
-  "大東市":     "27218",
-  "和泉市":     "27219",
-  "箕面市":     "27220",
-  "柏原市":     "27221",
-  "羽曳野市":   "27222",
-  "門真市":     "27223",
-  "摂津市":     "27224",
-  "高石市":     "27225",
-  "藤井寺市":   "27226",
-  "東大阪市":   "27227",
-  "泉南市":     "27228",
-  "四條畷市":   "27229",
-  "交野市":     "27230",
-  "大阪狭山市": "27231",
-  "阪南市":     "27232",
-};
 
 interface ReinfilibFeature {
   properties?: Record<string, unknown>;
-  geometry?: { coordinates?: unknown };
 }
 
 async function fetchHazardApi(
@@ -74,7 +35,6 @@ function assessRisk(features: ReinfilibFeature[]): HazardRisk {
   let risk: RiskLevel = "low";
   if (count > 100) risk = "high";
   else if (count > 20) risk = "medium";
-  else risk = "low";
   return { risk, description: `${count}件の区域が確認されています` };
 }
 
@@ -86,15 +46,21 @@ async function getShelters(municipalityCode: string): Promise<Shelter[]> {
 export const handler = async (event: { municipalityCodes?: string[] }): Promise<void> => {
   const apiKey = await getSecret("disaster-rag/reinfolib-api-key");
 
-  // Process specified municipalities or all Osaka ones
-  const targetCodes = event.municipalityCodes
-    ? Object.fromEntries(
-        Object.entries(OSAKA_MUNICIPALITIES).filter(([, v]) => event.municipalityCodes!.includes(v))
-      )
-    : OSAKA_MUNICIPALITIES;
+  // S3からマスターデータを読み込む（ハードコードなし）
+  const allCodes = await getJson<Record<string, string>>("master/municipality_codes.json");
+  if (!allCodes) {
+    throw new Error("master/municipality_codes.json が見つかりません");
+  }
+
+  // 指定コードのみ or 全市区町村
+  const targetEntries = event.municipalityCodes
+    ? Object.entries(allCodes).filter(([, v]) => event.municipalityCodes!.includes(v))
+    : Object.entries(allCodes);
+
+  console.log(`処理対象: ${targetEntries.length}市区町村`);
 
   let processed = 0;
-  for (const [areaName, areaCode] of Object.entries(targetCodes)) {
+  for (const [areaName, areaCode] of targetEntries) {
     const [floodFeatures, stormFeatures, tsunamiFeatures, landslideFeatures] = await Promise.all([
       fetchHazardApi(HAZARD_APIS.flood,      areaCode, apiKey),
       fetchHazardApi(HAZARD_APIS.stormSurge, areaCode, apiKey),
@@ -117,8 +83,8 @@ export const handler = async (event: { municipalityCodes?: string[] }): Promise<
 
     await putJson(`hazard/${areaCode}.json`, hazard);
     processed++;
-    console.log(`Saved: ${areaName} (${areaCode})`);
+    console.log(`Saved: ${areaName} (${areaCode}) 洪水:${hazard.flood.risk} 土砂:${hazard.landslide.risk}`);
   }
 
-  console.log(`Hazard update complete: ${processed} municipalities`);
+  console.log(`Hazard update complete: ${processed}/${targetEntries.length} municipalities`);
 };

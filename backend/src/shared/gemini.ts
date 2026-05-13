@@ -14,7 +14,7 @@ async function getClient(): Promise<GoogleGenAI> {
 export async function generateAnswer(prompt: string): Promise<string> {
   const client = await getClient();
   const res = await client.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash-lite",
     contents: prompt,
   });
   return res.text ?? "";

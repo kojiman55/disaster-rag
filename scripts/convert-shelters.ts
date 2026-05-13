@@ -1,15 +1,11 @@
 /**
  * 国土地理院 指定緊急避難場所CSVを市区町村コード別JSONに変換してS3にアップロード
  *
- * 入力: 大阪府CSVファイル (27000_2.csv)
- * 出力: s3://BUCKET/master/shelters/{municipalityCode}.json
- *
  * 実行方法:
  *   BUCKET_NAME=xxx CSV_PATH=/path/to/27000_2.csv npx ts-node convert-shelters.ts
  */
 
 import * as fs from "fs";
-import * as readline from "readline";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 interface Shelter {
@@ -20,8 +16,11 @@ interface Shelter {
   types: string[];
 }
 
+// CSV列インデックス（0始まり）
+// NO,共通ID,施設名,住所,洪水,崖崩れ,高潮,地震,津波,大規模火事,内水氾濫,火山,指定避難所同一,緯度,経度,備考
+const COL = { id: 1, name: 2, address: 3, lat: 13, lng: 14 };
 const DISASTER_COLS = ["洪水", "崖崩れ・土石流・地滑り", "高潮", "地震", "津波", "大規模な火事", "内水氾濫", "火山現象"];
-const DISASTER_IDX = [4, 5, 6, 7, 8, 9, 10, 11]; // 0-indexed column positions
+const DISASTER_IDX = [4, 5, 6, 7, 8, 9, 10, 11];
 
 const BUCKET = process.env.BUCKET_NAME!;
 const CSV_PATH = process.env.CSV_PATH ?? `${process.env.HOME}/Developer/disaster-rag-data/27000_2.csv`;
@@ -32,37 +31,47 @@ if (!BUCKET && !DRY_RUN) {
   process.exit(1);
 }
 
+function parseCSV(content: string): string[][] {
+  const rows: string[][] = [];
+  const lines = content.split(/\r?\n/);
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    // 簡易CSVパース（フィールド内カンマ非対応だが本データは問題なし）
+    rows.push(line.split(","));
+  }
+  return rows;
+}
+
 async function run() {
   const s3 = new S3Client({ region: "ap-northeast-1" });
 
-  // Parse CSV
+  // UTF-8 BOM対応で読み込み
+  const raw = fs.readFileSync(CSV_PATH);
+  const content = raw.toString("utf-8").replace(/^﻿/, ""); // BOM除去
+
+  const rows = parseCSV(content);
+  console.log(`読み込み行数: ${rows.length}`);
+
   const sheltersByCode: Record<string, Shelter[]> = {};
+  let skipped = 0;
 
-  const rl = readline.createInterface({ input: fs.createReadStream(CSV_PATH, "utf-8") });
-  let isHeader = true;
+  for (let i = 1; i < rows.length; i++) { // ヘッダーをスキップ
+    const cols = rows[i];
+    if (cols.length < 15) { skipped++; continue; }
 
-  for await (const rawLine of rl) {
-    // Strip BOM
-    const line = rawLine.replace(/^﻿/, "");
-    if (isHeader) { isHeader = false; continue; }
+    const commonId = cols[COL.id]?.trim();
+    const name     = cols[COL.name]?.trim();
+    const address  = cols[COL.address]?.trim();
+    const lat      = parseFloat(cols[COL.lat]);
+    const lng      = parseFloat(cols[COL.lng]);
 
-    const cols = line.split(",");
-    if (cols.length < 13) continue;
+    if (!commonId || !name || isNaN(lat) || isNaN(lng)) { skipped++; continue; }
 
-    const commonId = cols[1]?.trim();  // 共通ID: E27211xxxxx
-    const name    = cols[2]?.trim();
-    const address = cols[3]?.trim();
-    const lat     = parseFloat(cols[10]);
-    const lng     = parseFloat(cols[11]);
+    // 共通ID: E + 5桁市区町村コード + 連番
+    const match = commonId.match(/^E(\d{5})/);
+    if (!match) { skipped++; continue; }
+    const municipalityCode = match[1];
 
-    if (!commonId || !name || isNaN(lat) || isNaN(lng)) continue;
-
-    // Municipality code from common ID: E + 5-digit code + rest
-    const codeMatch = commonId.match(/^E(\d{5})/);
-    if (!codeMatch) continue;
-    const municipalityCode = codeMatch[1];
-
-    // Applicable disaster types (column value "1" = applicable)
     const types: string[] = [];
     DISASTER_IDX.forEach((idx, i) => {
       if (cols[idx]?.trim() === "1") types.push(DISASTER_COLS[i]);
@@ -73,13 +82,14 @@ async function run() {
   }
 
   const codes = Object.keys(sheltersByCode);
-  console.log(`市区町村数: ${codes.length}, 合計避難場所: ${codes.reduce((s, c) => s + sheltersByCode[c].length, 0)}`);
+  const total = codes.reduce((s, c) => s + sheltersByCode[c].length, 0);
+  console.log(`市区町村数: ${codes.length}, 合計避難場所: ${total}, スキップ: ${skipped}`);
 
   for (const code of codes) {
     const key = `master/shelters/${code}.json`;
     const body = JSON.stringify(sheltersByCode[code]);
     if (DRY_RUN) {
-      console.log(`[DRY_RUN] s3://${BUCKET}/${key} (${sheltersByCode[code].length}件)`);
+      console.log(`[DRY_RUN] ${key} (${sheltersByCode[code].length}件)`);
     } else {
       await s3.send(new PutObjectCommand({ Bucket: BUCKET, Key: key, Body: body, ContentType: "application/json" }));
       console.log(`Uploaded: ${key} (${sheltersByCode[code].length}件)`);

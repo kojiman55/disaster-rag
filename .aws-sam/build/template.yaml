@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: "DisasterRAG - \u9632\u707D\u60C5\u5831AI\u30B7\u30B9\u30C6\u30E0"
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        BUCKET_NAME:
+          Ref: DataBucket
+        LOCATION_INDEX_NAME: disaster-rag-index
+Resources:
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        Fn::Sub: disaster-rag-data-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+  PlaceIndex:
+    Type: AWS::Location::PlaceIndex
+    Properties:
+      IndexName: disaster-rag-index
+      DataSource: Esri
+      Description: Geocoding for DisasterRAG
+  DisasterRagApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: '''POST,OPTIONS'''
+        AllowHeaders: '''Content-Type'''
+        AllowOrigin: '''*'''
+  DisasterQueryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: disaster-rag-query
+      Handler: disasterQuery.handler
+      CodeUri: DisasterQueryFunction
+      Description: "\u4F4F\u6240\u2192\u30CF\u30B6\u30FC\u30C9\u30C7\u30FC\u30BF\u53D6\
+        \u5F97\u2192Gemini\u56DE\u7B54\u751F\u6210"
+      Timeout: 30
+      MemorySize: 512
+      Policies:
+      - S3ReadPolicy:
+          BucketName:
+            Ref: DataBucket
+      - AWSSecretsManagerGetSecretValuePolicy:
+          SecretArn:
+            Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:disaster-rag/gemini-api-key-*
+      - AWSSecretsManagerGetSecretValuePolicy:
+          SecretArn:
+            Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:disaster-rag/reinfolib-api-key-*
+      - Statement:
+        - Effect: Allow
+          Action: geo:SearchPlaceIndexForText
+          Resource:
+            Fn::Sub: arn:aws:geo:${AWS::Region}:${AWS::AccountId}:place-index/disaster-rag-index
+      Events:
+        QueryApi:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: DisasterRagApi
+            Path: /query
+            Method: post
+        QueryOptions:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: DisasterRagApi
+            Path: /query
+            Method: options
+    Metadata:
+      SamResourceId: DisasterQueryFunction
+  WeatherUpdateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: disaster-rag-weather-update
+      Handler: weatherUpdate.handler
+      CodeUri: WeatherUpdateFunction
+      Description: "\u6C17\u8C61\u5E81XML\u304B\u3089\u8B66\u5831\u30FB\u6CE8\u610F\
+        \u5831\u3092\u53D6\u5F97\u3057\u3066S3\u306B\u4FDD\u5B58\uFF085\u5206\u3054\
+        \u3068\uFF09"
+      Timeout: 60
+      Policies:
+      - S3CrudPolicy:
+          BucketName:
+            Ref: DataBucket
+      Events:
+        WeatherSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Description: "\u6C17\u8C61\u60C5\u5831\u30925\u5206\u3054\u3068\u306B\u66F4\
+              \u65B0"
+    Metadata:
+      SamResourceId: WeatherUpdateFunction
+  HazardUpdateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: disaster-rag-hazard-update
+      Handler: hazardUpdate.handler
+      CodeUri: HazardUpdateFunction
+      Description: "\u56FD\u571F\u4EA4\u901A\u7701API\u304B\u3089\u30CF\u30B6\u30FC\
+        \u30C9\u30C7\u30FC\u30BF\u3092\u53D6\u5F97\u3057\u3066S3\u306B\u4FDD\u5B58\
+        \uFF08\u67081\u56DE\uFF09"
+      Timeout: 600
+      MemorySize: 512
+      Policies:
+      - S3CrudPolicy:
+          BucketName:
+            Ref: DataBucket
+      - AWSSecretsManagerGetSecretValuePolicy:
+          SecretArn:
+            Fn::Sub: arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:disaster-rag/reinfolib-api-key-*
+      Events:
+        HazardSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 2 1 * ? *)
+            Description: "\u30CF\u30B6\u30FC\u30C9\u30C7\u30FC\u30BF\u3092\u67081\u56DE\
+              \u66F4\u65B0"
+    Metadata:
+      SamResourceId: HazardUpdateFunction
+Outputs:
+  ApiUrl:
+    Description: API Gateway URL
+    Value:
+      Fn::Sub: https://${DisasterRagApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+  DataBucketName:
+    Description: "S3\u30C7\u30FC\u30BF\u30D0\u30B1\u30C3\u30C8\u540D"
+    Value:
+      Ref: DataBucket
