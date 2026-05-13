@@ -43,7 +43,7 @@ export default function Home() {
             <p className="text-xs text-gray-500">防災情報AIシステム — 大阪府対応</p>
           </div>
           <div className="ml-auto flex gap-1.5 text-xs text-gray-400">
-            <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded">Gemini 2.0 Flash</span>
+            <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded">Gemini 2.5 Flash</span>
             <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded">気象庁</span>
             <span className="bg-orange-50 text-orange-700 px-2 py-0.5 rounded">国土交通省</span>
           </div>
@@ -109,7 +109,7 @@ export default function Home() {
       </main>
 
       <footer className="text-center py-6 text-xs text-gray-400 border-t border-gray-100 mt-8">
-        © 2025 eggsystems.jp — データ出典：気象庁 / 国土交通省 不動産情報ライブラリ / 国土地理院
+        © 2026 eggsystems.jp — データ出典：気象庁 / 国土交通省 不動産情報ライブラリ / 国土地理院
       </footer>
     </div>
   );

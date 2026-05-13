@@ -39,7 +39,12 @@ function assessRisk(features: ReinfilibFeature[]): HazardRisk {
 }
 
 async function getShelters(municipalityCode: string): Promise<Shelter[]> {
-  const shelters = await getJson<Shelter[]>(`master/shelters/${municipalityCode}.json`);
+  let shelters = await getJson<Shelter[]>(`master/shelters/${municipalityCode}.json`);
+  if (!shelters || shelters.length === 0) {
+    // 政令指定都市の区コードの場合、市全体のデータにフォールバック（例: 27127→27100）
+    const cityCode = `${municipalityCode.slice(0, 3)}00`;
+    shelters = await getJson<Shelter[]>(`master/shelters/${cityCode}.json`);
+  }
   return shelters ?? [];
 }
 
