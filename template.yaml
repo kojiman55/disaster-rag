@@ -1,0 +1,129 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: DisasterRAG - 防災情報AIシステム
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        BUCKET_NAME: !Ref DataBucket
+        LOCATION_INDEX_NAME: disaster-rag-index
+
+Resources:
+
+  # ── S3: データバケット ──────────────────────────────────
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'disaster-rag-data-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+
+  # ── Amazon Location Service ────────────────────────────
+  PlaceIndex:
+    Type: AWS::Location::PlaceIndex
+    Properties:
+      IndexName: disaster-rag-index
+      DataSource: Esri
+      Description: Geocoding for DisasterRAG
+
+  # ── API Gateway ────────────────────────────────────────
+  DisasterRagApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'POST,OPTIONS'"
+        AllowHeaders: "'Content-Type'"
+        AllowOrigin: "'*'"
+
+  # ── Lambda: disaster-query ─────────────────────────────
+  DisasterQueryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: disaster-rag-query
+      Handler: disasterQuery.handler
+      CodeUri: backend/dist/
+      Description: 住所→ハザードデータ取得→Gemini回答生成
+      Timeout: 30
+      MemorySize: 512
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DataBucket
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:disaster-rag/gemini-api-key-*'
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:disaster-rag/reinfolib-api-key-*'
+        - Statement:
+            - Effect: Allow
+              Action: geo:SearchPlaceIndexForText
+              Resource: !Sub 'arn:aws:geo:${AWS::Region}:${AWS::AccountId}:place-index/disaster-rag-index'
+      Events:
+        QueryApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DisasterRagApi
+            Path: /query
+            Method: post
+        QueryOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DisasterRagApi
+            Path: /query
+            Method: options
+
+  # ── Lambda: weather-update ─────────────────────────────
+  WeatherUpdateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: disaster-rag-weather-update
+      Handler: weatherUpdate.handler
+      CodeUri: backend/dist/
+      Description: 気象庁XMLから警報・注意報を取得してS3に保存（5分ごと）
+      Timeout: 60
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref DataBucket
+      Events:
+        WeatherSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Description: 気象情報を5分ごとに更新
+
+  # ── Lambda: hazard-update ──────────────────────────────
+  HazardUpdateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: disaster-rag-hazard-update
+      Handler: hazardUpdate.handler
+      CodeUri: backend/dist/
+      Description: 国土交通省APIからハザードデータを取得してS3に保存（月1回）
+      Timeout: 600
+      MemorySize: 512
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref DataBucket
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:disaster-rag/reinfolib-api-key-*'
+      Events:
+        HazardSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 2 1 * ? *)
+            Description: ハザードデータを月1回更新
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway URL
+    Value: !Sub 'https://${DisasterRagApi}.execute-api.${AWS::Region}.amazonaws.com/prod'
+  DataBucketName:
+    Description: S3データバケット名
+    Value: !Ref DataBucket

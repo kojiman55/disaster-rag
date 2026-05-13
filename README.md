@@ -44,9 +44,10 @@ npm run dev
 ## デプロイ
 
 ```bash
-# バックエンド（CDK）
+# バックエンド（SAM）
 cd backend && npm install && npm run build
-cd infrastructure && npx cdk deploy --profile eggsystems
+cd ..
+sam build && sam deploy  # samconfig.toml の設定を使用
 
 # フロントエンド（GitHub Actions自動デプロイ）
 # mainブランチにpushすると自動デプロイ

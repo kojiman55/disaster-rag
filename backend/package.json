@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "esbuild functions/disaster-query/index.ts functions/weather-update/index.ts functions/hazard-update/index.ts --bundle --platform=node --target=node20 --outdir=dist --external:@aws-sdk/*",
+    "build": "esbuild src/disasterQuery.ts src/weatherUpdate.ts src/hazardUpdate.ts --bundle --platform=node --target=node20 --outdir=dist --external:@aws-sdk/*",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

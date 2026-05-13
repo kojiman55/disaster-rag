@@ -1,6 +1,6 @@
-import { getJson, putJson } from "../../shared/s3";
-import { getSecret } from "../../shared/secrets";
-import { HazardData, HazardRisk, RiskLevel, Shelter } from "../../shared/types";
+import { getJson, putJson } from "./shared/s3";
+import { getSecret } from "./shared/secrets";
+import { HazardData, HazardRisk, RiskLevel, Shelter } from "./shared/types";
 
 const REINFOLIB_BASE = "https://www.reinfolib.mlit.go.jp/ex-api/external";
 

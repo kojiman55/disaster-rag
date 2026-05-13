@@ -1,8 +1,8 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { geocode } from "../../shared/location";
-import { getJson } from "../../shared/s3";
-import { generateAnswer } from "../../shared/gemini";
-import { HazardData, WeatherData } from "../../shared/types";
+import { geocode } from "./shared/location";
+import { getJson } from "./shared/s3";
+import { generateAnswer } from "./shared/gemini";
+import { HazardData, WeatherData } from "./shared/types";
 
 type MunicipalityCodes = Record<string, string>;
 

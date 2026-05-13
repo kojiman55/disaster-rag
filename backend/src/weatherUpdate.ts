@@ -1,6 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
-import { putJson } from "../../shared/s3";
-import { WeatherWarning, WeatherData } from "../../shared/types";
+import { putJson } from "./shared/s3";
+import { WeatherWarning, WeatherData } from "./shared/types";
 
 const FEED_URL = "https://www.data.jma.go.jp/developer/xml/feed/extra.xml";
 

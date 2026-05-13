@@ -1,14 +1,43 @@
-name: Deploy Frontend to S3
+name: Deploy
 
 on:
   push:
     branches: [main]
-    paths:
-      - "frontend/**"
 
 jobs:
-  deploy:
+  # ── バックエンド (SAM) ─────────────────────────────────
+  deploy-backend:
     runs-on: ubuntu-latest
+    if: contains(toJson(github.event.commits.*.modified), 'backend/') || contains(toJson(github.event.commits.*.modified), 'template.yaml')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-northeast-1
+
+      - name: Build backend
+        run: npm ci && npm run build
+        working-directory: backend
+
+      - uses: aws-actions/setup-sam@v2
+
+      - name: SAM build & deploy
+        run: sam build && sam deploy
+        env:
+          SAM_CLI_TELEMETRY: "0"
+
+  # ── フロントエンド (S3 + CloudFront) ──────────────────
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    if: contains(toJson(github.event.commits.*.modified), 'frontend/')
     steps:
       - uses: actions/checkout@v4
 
@@ -18,12 +47,8 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
-        working-directory: frontend
-
-      - name: Build
-        run: npm run build
+      - name: Install & Build
+        run: npm ci && npm run build
         working-directory: frontend
         env:
           NEXT_PUBLIC_API_BASE: ${{ secrets.API_BASE_URL }}
