@@ -92,24 +92,33 @@ API GatewayのスロットリングとLambdaの予約済み同時実行数を組
 - 国土交通省 不動産情報ライブラリ API キー（[登録はこちら](https://www.reinfolib.mlit.go.jp/)）
 - Qdrant インスタンス（Cloud の無料プランで動作確認済み）
 
-### Secrets Manager への登録
+### Parameter Store への登録
 
 ```bash
-aws secretsmanager create-secret \
-  --name "disaster-rag/gemini-api-key" \
-  --secret-string "YOUR_KEY"
+aws ssm put-parameter \
+  --name "/disaster-rag/gemini-api-key" \
+  --value "YOUR_KEY" \
+  --type SecureString
 
-aws secretsmanager create-secret \
-  --name "disaster-rag/reinfolib-api-key" \
-  --secret-string "YOUR_KEY"
+aws ssm put-parameter \
+  --name "/disaster-rag/reinfolib-api-key" \
+  --value "YOUR_KEY" \
+  --type SecureString
 
-aws secretsmanager create-secret \
-  --name "disaster-rag/qdrant-url" \
-  --secret-string "https://your-qdrant-instance"
+aws ssm put-parameter \
+  --name "/disaster-rag/qdrant-url" \
+  --value "https://your-qdrant-instance" \
+  --type SecureString
 
-aws secretsmanager create-secret \
-  --name "disaster-rag/qdrant-api-key" \
-  --secret-string "YOUR_KEY"
+aws ssm put-parameter \
+  --name "/disaster-rag/qdrant-api-key" \
+  --value "YOUR_KEY" \
+  --type SecureString
+
+aws ssm put-parameter \
+  --name "/disaster-rag/ors-api-key" \
+  --value "YOUR_KEY" \
+  --type SecureString
 ```
 
 ### バックエンドのデプロイ
