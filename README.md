@@ -179,3 +179,9 @@ npm install && npm run dev
 - [気象庁 防災情報API](https://www.jma.go.jp/bosai/)
 - [OpenRouteService](https://openrouteservice.org/)（徒歩経路）
 - 大阪府・各市区町村 地域防災計画（PDF）
+
+---
+
+## ライセンス
+
+[MIT](LICENSE) © 2026 Koji Okuji
